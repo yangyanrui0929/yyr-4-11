@@ -4,6 +4,7 @@ import type {
   TowerConfig,
   EnemyConfig,
   WaveConfig,
+  TowerBranch,
 } from "@/types/game";
 
 export const GRID_COLS = 15;
@@ -241,3 +242,89 @@ export function generateWaves(day: number): WaveConfig[] {
 
 export const INITIAL_GOLD = 200;
 export const INITIAL_LIVES = 10;
+
+export interface BranchConfig {
+  id: TowerBranch;
+  name: string;
+  emoji: string;
+  description: string;
+  damageMult: number;
+  rangeBonus: number;
+  fireRateMult: number;
+  splashRadius?: number;
+  slowFactor?: number;
+  burnDps?: number;
+  upgradeCostMult: number;
+}
+
+export const BRANCH_CONFIGS: Record<string, BranchConfig[]> = {
+  spatula: [
+    {
+      id: "combo",
+      name: "连击",
+      emoji: "⚡",
+      description: "攻速大幅提升，快速连击敌人",
+      damageMult: 0.8,
+      rangeBonus: 0,
+      fireRateMult: 0.55,
+      upgradeCostMult: 1,
+    },
+    {
+      id: "heavyStrike",
+      name: "重击",
+      emoji: "💪",
+      description: "伤害大幅提升，每次攻击势大力沉",
+      damageMult: 2.0,
+      rangeBonus: 10,
+      fireRateMult: 1.4,
+      upgradeCostMult: 1,
+    },
+  ],
+  chili: [
+    {
+      id: "wideRange",
+      name: "大范围",
+      emoji: "💥",
+      description: "溅射范围扩大，覆盖更多敌人",
+      damageMult: 1,
+      rangeBonus: 20,
+      fireRateMult: 1,
+      splashRadius: 100,
+      upgradeCostMult: 1,
+    },
+    {
+      id: "burn",
+      name: "灼烧",
+      emoji: "🔥",
+      description: "命中敌人持续燃烧，造成额外伤害",
+      damageMult: 0.9,
+      rangeBonus: 0,
+      fireRateMult: 1,
+      burnDps: 8,
+      upgradeCostMult: 1,
+    },
+  ],
+  freezer: [
+    {
+      id: "deepFreeze",
+      name: "深冻",
+      emoji: "❄️",
+      description: "减速效果增强至75%，敌人几乎冻结",
+      damageMult: 1.2,
+      rangeBonus: 10,
+      fireRateMult: 1,
+      slowFactor: 0.25,
+      upgradeCostMult: 1,
+    },
+    {
+      id: "powerSaving",
+      name: "省电",
+      emoji: "🔋",
+      description: "升级费用降低，攻速提升",
+      damageMult: 0.9,
+      rangeBonus: 0,
+      fireRateMult: 0.7,
+      upgradeCostMult: 0.6,
+    },
+  ],
+};

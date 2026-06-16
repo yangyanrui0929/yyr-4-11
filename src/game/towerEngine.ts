@@ -7,6 +7,7 @@ import {
   CANVAS_HEIGHT,
   TOWER_CONFIGS,
   ENEMY_CONFIGS,
+  BRANCH_CONFIGS,
 } from "@/game/config";
 import type { Enemy, Bullet, Tower, FloatingText } from "@/types/game";
 
@@ -142,17 +143,38 @@ export function gameTick(now: number) {
     if (d < 20) {
       bulletsToRemove.push(bullet.id);
 
+      const tower = currState.towers.find((t) => {
+        const pos = getTowerPixelPos(t);
+        return Math.abs(pos.x - bullet.x) < CANVAS_WIDTH && t.type === bullet.type;
+      });
+      const branchCfg = tower?.branch
+        ? BRANCH_CONFIGS[tower.type].find((b) => b.id === tower.branch)
+        : null;
+
       if (bullet.type === "chili") {
+        const splashR = branchCfg?.splashRadius ?? 60;
         for (const e of currState.enemies) {
-          if (distance(target.x, target.y, e.x, e.y) <= 60) {
+          if (distance(target.x, target.y, e.x, e.y) <= splashR) {
             const prev = enemyDamage.get(e.id) || 0;
             enemyDamage.set(e.id, prev + bullet.damage);
+            if (branchCfg?.burnDps) {
+              enemySlow.set(e.id, { ...enemySlow.get(e.id) || { until: 0, factor: 1 }, until: 0, factor: 1 });
+              useGameStore.setState((s) => ({
+                enemies: s.enemies.map((en) =>
+                  en.id === e.id
+                    ? { ...en, burnUntil: now + 3000, burnDamage: branchCfg.burnDps! }
+                    : en
+                ),
+              }));
+            }
           }
         }
       } else if (bullet.type === "freezer") {
         const prev = enemyDamage.get(target.id) || 0;
         enemyDamage.set(target.id, prev + bullet.damage);
-        enemySlow.set(target.id, { until: now + 2000, factor: 0.5 });
+        const slowF = branchCfg?.slowFactor ?? 0.5;
+        const slowDur = branchCfg?.slowFactor ? 3000 : 2000;
+        enemySlow.set(target.id, { until: now + slowDur, factor: slowF });
       } else {
         const prev = enemyDamage.get(target.id) || 0;
         enemyDamage.set(target.id, prev + bullet.damage);
@@ -228,6 +250,35 @@ export function gameTick(now: number) {
     useGameStore.setState((s) => ({ floatingTexts: [...s.floatingTexts, ft] }));
   }
 
+  const burnState = useGameStore.getState();
+  const burnDamages: Map<string, number> = new Map();
+  for (const enemy of burnState.enemies) {
+    if (enemy.burnUntil > now && enemy.burnDamage > 0) {
+      const tickDmg = Math.max(1, Math.floor(enemy.burnDamage / 5));
+      const prev = burnDamages.get(enemy.id) || 0;
+      burnDamages.set(enemy.id, prev + tickDmg);
+    }
+  }
+  for (const [eId, dmg] of burnDamages) {
+    const e = burnState.enemies.find((x) => x.id === eId);
+    if (!e) continue;
+    const newHp = e.hp - dmg;
+    if (newHp <= 0) {
+      const reward = ENEMY_CONFIGS[e.type].reward;
+      useGameStore.setState((s) => ({
+        enemies: s.enemies.filter((x) => x.id !== eId),
+        gold: s.gold + reward,
+        waveReward: s.waveReward + reward,
+      }));
+    } else {
+      useGameStore.setState((s) => ({
+        enemies: s.enemies.map((x) =>
+          x.id === eId ? { ...x, hp: newHp } : x
+        ),
+      }));
+    }
+  }
+
   const finalState = useGameStore.getState();
   const expiredTexts = finalState.floatingTexts.filter(
     (t) => now - t.createdAt > 1000
@@ -281,6 +332,8 @@ export async function spawnWaveEnemies(waveIndex: number) {
         slowUntil: 0,
         slowFactor: 1,
         hitFlash: 0,
+        burnUntil: 0,
+        burnDamage: 0,
       });
       await new Promise((r) => setTimeout(r, group.delay));
     }
@@ -436,9 +489,13 @@ export function drawBattlefield(
     ctx.fillText(cfg.emoji, pos.x, pos.y);
 
     if (tower.level > 1) {
+      const branchCfg = tower.branch
+        ? BRANCH_CONFIGS[tower.type].find((b) => b.id === tower.branch)
+        : null;
       ctx.fillStyle = "#FFD700";
       ctx.font = "bold 10px sans-serif";
-      ctx.fillText(`Lv${tower.level}`, pos.x, pos.y + 22);
+      const branchText = branchCfg ? ` ${branchCfg.emoji}` : "";
+      ctx.fillText(`Lv${tower.level}${branchText}`, pos.x, pos.y + 22);
     }
   }
 
@@ -450,6 +507,13 @@ export function drawBattlefield(
 
     if (isFrozen) {
       ctx.fillStyle = "rgba(79,195,247,0.3)";
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, r + 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (enemy.burnUntil > performance.now()) {
+      ctx.fillStyle = "rgba(255,87,34,0.25)";
       ctx.beginPath();
       ctx.arc(enemy.x, enemy.y, r + 6, 0, Math.PI * 2);
       ctx.fill();

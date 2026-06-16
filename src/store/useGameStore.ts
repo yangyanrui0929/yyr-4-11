@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type {
   GameState,
   TowerType,
+  TowerBranch,
   Enemy,
   Bullet,
   FloatingText,
@@ -16,6 +17,7 @@ import {
   TOWER_CONFIGS,
   ENEMY_CONFIGS,
   CELL_SIZE,
+  BRANCH_CONFIGS,
   generateWaves,
 } from "@/game/config";
 import { loadGame, saveGame } from "@/utils/storage";
@@ -40,6 +42,7 @@ interface GameActions {
   placeTower: (gridX: number, gridY: number) => boolean;
   upgradeTower: (towerId: string) => boolean;
   sellTower: (towerId: string) => void;
+  selectBranch: (towerId: string, branch: TowerBranch) => void;
 
   startWave: () => void;
   togglePause: () => void;
@@ -328,6 +331,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
           gridY,
           level: 1,
           lastFireTime: 0,
+          branch: null,
         },
       ],
     }));
@@ -338,10 +342,17 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const state = get();
     const tower = state.towers.find((t) => t.id === towerId);
     if (!tower) return false;
-    const config = TOWER_CONFIGS[tower.type];
-    const cost = Math.floor(config.upgradeCost * Math.pow(config.upgradeMultiplier, tower.level - 1));
-    if (state.gold < cost) return false;
     if (tower.level >= 5) return false;
+    if (tower.level >= 3 && !tower.branch) return false;
+    const config = TOWER_CONFIGS[tower.type];
+    const branchCfg = tower.branch
+      ? BRANCH_CONFIGS[tower.type].find((b) => b.id === tower.branch)
+      : null;
+    const costMult = branchCfg ? branchCfg.upgradeCostMult : 1;
+    const cost = Math.floor(
+      config.upgradeCost * Math.pow(config.upgradeMultiplier, tower.level - 1) * costMult
+    );
+    if (state.gold < cost) return false;
 
     set((s) => ({
       gold: s.gold - cost,
@@ -350,6 +361,14 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       ),
     }));
     return true;
+  },
+
+  selectBranch: (towerId: string, branch: TowerBranch) => {
+    set((s) => ({
+      towers: s.towers.map((t) =>
+        t.id === towerId ? { ...t, branch } : t
+      ),
+    }));
   },
 
   sellTower: (towerId: string) => {
@@ -464,19 +483,33 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   getCurrentWaves: () => generateWaves(get().day),
 }));
 
-export function getTowerStats(tower: { type: TowerType; level: number }) {
+export function getTowerStats(tower: { type: TowerType; level: number; branch: TowerBranch | null }) {
   const config = TOWER_CONFIGS[tower.type];
   const mult = Math.pow(config.upgradeMultiplier, tower.level - 1);
+  const branchCfg = tower.branch
+    ? BRANCH_CONFIGS[tower.type].find((b) => b.id === tower.branch)
+    : null;
+
+  const baseDmg = Math.floor(config.damage * mult);
+  const baseRange = config.range + (tower.level - 1) * 10;
+  const baseFireRate = Math.max(200, config.fireRate - (tower.level - 1) * 80);
+
+  const damage = branchCfg ? Math.floor(baseDmg * branchCfg.damageMult) : baseDmg;
+  const range = branchCfg ? baseRange + branchCfg.rangeBonus : baseRange;
+  const fireRate = branchCfg ? Math.max(200, Math.floor(baseFireRate * branchCfg.fireRateMult)) : baseFireRate;
+  const costMult = branchCfg ? branchCfg.upgradeCostMult : 1;
+
   return {
-    damage: Math.floor(config.damage * mult),
-    range: config.range + (tower.level - 1) * 10,
-    fireRate: Math.max(200, config.fireRate - (tower.level - 1) * 80),
+    damage,
+    range,
+    fireRate,
     upgradeCost:
       tower.level >= 5
         ? 0
         : Math.floor(
-            config.upgradeCost * Math.pow(config.upgradeMultiplier, tower.level - 1)
+            config.upgradeCost * Math.pow(config.upgradeMultiplier, tower.level - 1) * costMult
           ),
+    branchCfg,
   };
 }
 

@@ -1,5 +1,13 @@
 export type GamePhase = "day" | "night" | "settlement";
 
+export type TowerBranch =
+  | "combo"
+  | "heavyStrike"
+  | "wideRange"
+  | "burn"
+  | "deepFreeze"
+  | "powerSaving";
+
 export type TowerType = "spatula" | "chili" | "freezer";
 
 export type EnemyType = "cabbage" | "potato" | "tomato" | "meat" | "boss";
@@ -42,6 +50,7 @@ export interface Tower {
   gridY: number;
   level: number;
   lastFireTime: number;
+  branch: TowerBranch | null;
 }
 
 export interface EnemyConfig {
@@ -65,6 +74,8 @@ export interface Enemy {
   slowUntil: number;
   slowFactor: number;
   hitFlash: number;
+  burnUntil: number;
+  burnDamage: number;
 }
 
 export interface Bullet {
